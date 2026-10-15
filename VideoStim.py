@@ -1,15 +1,17 @@
+import argparse
+from pathlib import Path
+from datetime import datetime
+
+import pandas as pd
+import srt
 from psychopy import visual, core, monitors
 from psychopy.visual.vlcmoviestim import VlcMovieStim
 from psychopy.hardware import keyboard
 from psychopy.tools.monitorunittools import pix2cm
-
-from pathlib import Path
-from datetime import datetime
 from pylsl import StreamInfo, StreamOutlet
-import pandas as pd
-import srt
 
 from eyetracker import create_gaze_recorder
+from biosemi_recorder import create_eeg_recorder
 
 
 ### Settings
@@ -22,12 +24,12 @@ VIEWING_DISTANCE_CM = 60.0
 FULLSCR = True
 
 # Eyetracker valid area (cm, measured from the screen's top-left corner)
-EYE_VALID_LEFT_CM = 4.5
+EYE_VALID_LEFT_CM = 4.0
 EYE_VALID_TOP_CM = 6.5
 EYE_VALID_WIDTH_CM = 37.5
-EYE_VALID_HEIGHT_CM = 19.0
+EYE_VALID_HEIGHT_CM = 18.0
 
-# Video File
+# Default files (override with --video / --srt / --chunk)
 VIDEO_PATH = Path("video/Riddle_2.mp4")
 VIDEO_ASPECT = 16 / 9             # width / height of the video file
 SRT_FILE_PATH = Path("subtitles/Riddle_2.en.srt")
@@ -39,8 +41,6 @@ SUB_BG_HEIGHT_CM = 3.0
 SUB_BOTTOM_PADDING_CM = 0.3
 SUB_WIDTH_RATIO = 0.9             # fraction of the valid-area width
 
-# Eyetracker
-EYETRACKER_MODE = "tobii"         # "off" or "tobii"
 RESULTS_DIR = Path("results")
 
 ### Derived geometry (cm, origin = screen center, y up)
@@ -124,54 +124,7 @@ class MarkerSender:
             print(f"[MARKER] {msg}")
 
 
-### PsychoPy Objects
-monitor = monitors.Monitor("videostim_monitor", width=SCREEN_WIDTH_CM, distance=VIEWING_DISTANCE_CM)
-monitor.setSizePix(SCREEN_PX)
-
-win = visual.Window(
-    size=SCREEN_PX,
-    fullscr=FULLSCR,
-    units="cm",
-    color="black",
-    monitor=monitor,
-)
-
-video = VlcMovieStim(
-    win=win,
-    filename=str(VIDEO_PATH),
-    units="cm",
-    size=VIDEO_SIZE_CM,
-    pos=(VALID_CENTER_X, VALID_CENTER_Y),
-    loop=False,
-    autoStart=False,
-)
-
-subtitle_bg = visual.Rect(
-    win=win,
-    units="cm",
-    width=SUB_WIDTH_CM,
-    height=SUB_BG_HEIGHT_CM,
-    pos=(VALID_CENTER_X, SUB_CENTER_Y),
-    fillColor="black",
-    lineColor=None,
-    opacity=0.70,
-    autoLog=False,
-)
-
-subtitle_text = visual.TextStim(
-    win=win,
-    units="cm",
-    text="",
-    pos=(VALID_CENTER_X, SUB_CENTER_Y),
-    height=SUB_FONT_HEIGHT_CM,
-    wrapWidth=SUB_WIDTH_CM * 0.95,
-    color="white",
-)
-
-kb = keyboard.Keyboard()
-
-
-def set_subtitle(text: str):
+def set_subtitle(win, subtitle_text, text: str):
     """Update subtitle text and shrink it if it would overflow the subtitle box."""
     subtitle_text.text = text or ""
     subtitle_text.height = SUB_FONT_HEIGHT_CM
@@ -184,74 +137,146 @@ def set_subtitle(text: str):
         subtitle_text.height *= 0.9
 
 
-### Main Code
-is_running = True
-is_playing = True
+def parse_args():
+    parser = argparse.ArgumentParser(description="Video stimulus with optional Tobii gaze and EEG recording via LSL.")
+    parser.add_argument("--participant", default=None, help="Participant name. If omitted, the script asks.")
+    parser.add_argument("--eyetracker", choices=["off", "tobii"], default="off", help="Tobii gaze recording. Default: off.")
+    parser.add_argument("--eeg", choices=["off", "lsl"], default="off", help="EEG recording through LSL. Default: off.")
+    parser.add_argument("--eeg-stream-name", default=None, help="Exact LSL EEG stream name, e.g. ActiView.")
+    parser.add_argument("--eeg-stream-type", default="EEG", help="LSL stream type used when no name is given. Default: EEG.")
+    parser.add_argument("--video", type=Path, default=VIDEO_PATH, help="Video file. Default: video/Riddle_2.mp4")
+    parser.add_argument("--srt", type=Path, default=SRT_FILE_PATH, help="Subtitle file. Default: subtitles/Riddle_2.en.srt")
+    parser.add_argument("--chunk", type=Path, default=CHUNK_CSV_PATH, help="Chunk/pause CSV. Default: chunk/Riddle_2.csv")
+    return parser.parse_args()
 
-RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-session_id = datetime.now().strftime("%Y%m%d%H%M%S")
-participant_name = input("Participant name: ").strip() or "participant"
-safe_name = "".join(ch if ch not in '<>:"/\\|?*' else "_" for ch in participant_name)
-gaze_path = RESULTS_DIR / f"{safe_name}_gaze_{session_id}.csv"
 
-gaze_recorder = create_gaze_recorder(EYETRACKER_MODE, session_id=session_id, participant_name=participant_name)
-sender = MarkerSender()
-kb.clearEvents()
+def main():
+    args = parse_args()
 
-try:
-    gaze_recorder.start()
-    gaze_recorder.set_state(phase="video_playing", chunk_index="", chunk_text="")
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    session_id = datetime.now().strftime("%Y%m%d%H%M%S")
+    participant_name = args.participant or input("Participant name: ").strip() or "participant"
+    safe_name = "".join(ch if ch not in '<>:"/\\|?*' else "_" for ch in participant_name)
+    gaze_path = RESULTS_DIR / f"{safe_name}_gaze_{session_id}.csv"
+    eeg_path = RESULTS_DIR / f"{safe_name}_eeg_{session_id}.csv"
 
-    core.wait(1)  # wait 1 s for LSL and eyetracker to start
+    gaze_recorder = create_gaze_recorder(args.eyetracker, session_id=session_id, participant_name=participant_name)
+    eeg_recorder = create_eeg_recorder(args.eeg, stream_name=args.eeg_stream_name, stream_type=args.eeg_stream_type)
+    sender = MarkerSender()
 
-    video.play()
-    videoSub = SrtHandler(SRT_FILE_PATH)
-    pauseHandler = PauseHandler(CHUNK_CSV_PATH)
+    ### PsychoPy Objects
+    monitor = monitors.Monitor("videostim_monitor", width=SCREEN_WIDTH_CM, distance=VIEWING_DISTANCE_CM)
+    monitor.setSizePix(SCREEN_PX)
 
-    while is_running and not video.isFinished:
-        video.draw()
-        currentTime = video.frameTime
+    win = visual.Window(
+        size=SCREEN_PX,
+        fullscr=FULLSCR,
+        units="cm",
+        color="black",
+        monitor=monitor,
+    )
 
-        ### Handling Pause Behaviors
-        shouldPause = pauseHandler.getPauseState(currentTime)
-        if shouldPause:
-            if is_playing:  # First enter this condition
-                is_playing = False
-                video.pause()
-                sender.send_trigger("VideoPaused")
-                gaze_recorder.set_state(phase="video_paused", chunk_index=pauseHandler.index, chunk_text="")
-                kb.clock.reset()
-                kb.clearEvents()
+    video = VlcMovieStim(
+        win=win,
+        filename=str(args.video),
+        units="cm",
+        size=VIDEO_SIZE_CM,
+        pos=(VALID_CENTER_X, VALID_CENTER_Y),
+        loop=False,
+        autoStart=False,
+    )
 
-            video_keys = kb.getKeys(keyList=['f', 'j'], waitRelease=False, clear=True)
-            if video_keys:  # Only consider the first key
-                if video_keys[0].name == 'f':
-                    print("keyboard] f pressed")
-                    sender.send_trigger("Confused")
-                else:
-                    print("keyboard] j pressed")
-                    sender.send_trigger("NotConfused")
+    subtitle_bg = visual.Rect(
+        win=win,
+        units="cm",
+        width=SUB_WIDTH_CM,
+        height=SUB_BG_HEIGHT_CM,
+        pos=(VALID_CENTER_X, SUB_CENTER_Y),
+        fillColor="black",
+        lineColor=None,
+        opacity=0.70,
+        autoLog=False,
+    )
 
-        elif not is_playing:
-            is_playing = True
-            video.play()
-            sender.send_trigger("VideoResume")
-            gaze_recorder.set_state(phase="video_playing", chunk_index="", chunk_text="")
+    subtitle_text = visual.TextStim(
+        win=win,
+        units="cm",
+        text="",
+        pos=(VALID_CENTER_X, SUB_CENTER_Y),
+        height=SUB_FONT_HEIGHT_CM,
+        wrapWidth=SUB_WIDTH_CM * 0.95,
+        color="white",
+    )
 
-        ### Handling Subtitles Display
-        set_subtitle(videoSub.getCurrentSub(currentTime))
-        if subtitle_text.text:
-            subtitle_bg.draw()
-            subtitle_text.draw()
+    kb = keyboard.Keyboard()
+    kb.clearEvents()
 
-        win.flip()
+    is_running = True
+    is_playing = True
 
-        keys = kb.getKeys(keyList=["escape"], waitRelease=False, clear=True)
-        if keys:
-            is_running = False
+    try:
+        gaze_recorder.start()
+        eeg_recorder.start()
+        gaze_recorder.set_state(phase="video_playing", chunk_index="", chunk_text="")
 
-finally:
-    gaze_recorder.stop()
-    gaze_recorder.save_csv(gaze_path)
-    print(f"Gaze data saved to {gaze_path}")
-    win.close()
+        core.wait(1)  # wait 1 s for LSL, eyetracker and EEG to start
+
+        video.play()
+        videoSub = SrtHandler(args.srt)
+        pauseHandler = PauseHandler(args.chunk)
+
+        while is_running and not video.isFinished:
+            video.draw()
+            currentTime = video.frameTime
+            gaze_recorder.set_state(video_time=f"{currentTime:.3f}")
+
+            ### Handling Pause Behaviors
+            shouldPause = pauseHandler.getPauseState(currentTime)
+            if shouldPause:
+                if is_playing:  # First enter this condition
+                    is_playing = False
+                    video.pause()
+                    sender.send_trigger("VideoPaused")
+                    gaze_recorder.set_state(phase="video_paused", chunk_index=pauseHandler.index, chunk_text="")
+                    kb.clock.reset()
+                    kb.clearEvents()
+
+                video_keys = kb.getKeys(keyList=['f', 'j'], waitRelease=False, clear=True)
+                if video_keys:  # Only consider the first key
+                    if video_keys[0].name == 'f':
+                        print("keyboard] f pressed")
+                        sender.send_trigger("Confused")
+                    else:
+                        print("keyboard] j pressed")
+                        sender.send_trigger("NotConfused")
+
+            elif not is_playing:
+                is_playing = True
+                video.play()
+                sender.send_trigger("VideoResume")
+                gaze_recorder.set_state(phase="video_playing", chunk_index="", chunk_text="")
+
+            ### Handling Subtitles Display
+            set_subtitle(win, subtitle_text, videoSub.getCurrentSub(currentTime))
+            if subtitle_text.text:
+                subtitle_bg.draw()
+                subtitle_text.draw()
+
+            win.flip()
+
+            keys = kb.getKeys(keyList=["escape"], waitRelease=False, clear=True)
+            if keys:
+                is_running = False
+
+    finally:
+        gaze_recorder.stop()
+        eeg_recorder.stop()
+        gaze_recorder.save_csv(gaze_path)
+        eeg_recorder.save_csv(eeg_path)
+        print(f"Gaze data saved to {gaze_path}")
+        print(f"EEG data saved to {eeg_path}")
+        win.close()
+
+
+if __name__ == "__main__":
+    main()

@@ -17,6 +17,7 @@ GAZE_FIELDNAMES = [
     "device_time_stamp",
     "system_time_stamp",
     "phase",
+    "video_time",
     "trial_index",
     "question_number",
     "pack_id",
@@ -43,6 +44,7 @@ class BaseGazeRecorder:
         self.rows: list[dict] = []
         self.state = {
             "phase": "not_started",
+            "video_time": "",
             "trial_index": "",
             "question_number": "",
             "pack_id": "",
