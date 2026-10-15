@@ -1,0 +1,10 @@
+# Core (VideoStim.py, main_experiment.py, display_lsl.py)
+psychopy
+pandas
+srt
+pylsl
+python-vlc
+openpyxl
+
+# Optional: only needed when EYETRACKER_MODE = "tobii" / --eyetracker tobii
+# tobii_research  (install manually from the Tobii Pro SDK if pip fails)
