@@ -147,6 +147,7 @@ def parse_args():
     parser.add_argument("--video", type=Path, default=VIDEO_PATH, help="Video file. Default: video/Riddle_2.mp4")
     parser.add_argument("--srt", type=Path, default=SRT_FILE_PATH, help="Subtitle file. Default: subtitles/Riddle_2.en.srt")
     parser.add_argument("--chunk", type=Path, default=CHUNK_CSV_PATH, help="Chunk/pause CSV. Default: chunk/Riddle_2.csv")
+    parser.add_argument("--no-wait", action="store_true", help="Skip the 'press ENTER' pause for LabRecorder setup.")
     return parser.parse_args()
 
 
@@ -156,6 +157,8 @@ def main():
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     session_id = datetime.now().strftime("%Y%m%d%H%M%S")
     participant_name = args.participant or input("Participant name: ").strip() or "participant"
+    if not args.no_wait:
+        input("Set up LabRecorder (and check the eye tracker), then press ENTER to continue...")
     safe_name = "".join(ch if ch not in '<>:"/\\|?*' else "_" for ch in participant_name)
     gaze_path = RESULTS_DIR / f"{safe_name}_gaze_{session_id}.csv"
     eeg_path = RESULTS_DIR / f"{safe_name}_eeg_{session_id}.csv"
@@ -208,6 +211,30 @@ def main():
         color="white",
     )
 
+    # Confusion question shown while the video is paused
+    question_bg = visual.Rect(
+        win=win,
+        units="cm",
+        width=EYE_VALID_WIDTH_CM * 0.8,
+        height=5.0,
+        pos=(VALID_CENTER_X, VALID_CENTER_Y),
+        fillColor="black",
+        lineColor=None,
+        opacity=0.85,
+        autoLog=False,
+    )
+
+    question_text = visual.TextStim(
+        win=win,
+        units="cm",
+        text="你覺得剛剛這段內容困惑嗎？\n\nF：困惑　　J：不困惑",
+        font="Microsoft JhengHei",
+        pos=(VALID_CENTER_X, VALID_CENTER_Y),
+        height=1.0,
+        wrapWidth=EYE_VALID_WIDTH_CM * 0.7,
+        color="white",
+    )
+
     kb = keyboard.Keyboard()
     kb.clearEvents()
 
@@ -233,6 +260,8 @@ def main():
             ### Handling Pause Behaviors
             shouldPause = pauseHandler.getPauseState(currentTime)
             if shouldPause:
+                question_bg.draw()
+                question_text.draw()
                 if is_playing:  # First enter this condition
                     is_playing = False
                     video.pause()
@@ -258,7 +287,7 @@ def main():
 
             ### Handling Subtitles Display
             set_subtitle(win, subtitle_text, videoSub.getCurrentSub(currentTime))
-            if subtitle_text.text:
+            if subtitle_text.text and not shouldPause:
                 subtitle_bg.draw()
                 subtitle_text.draw()
 
