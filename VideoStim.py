@@ -17,7 +17,7 @@ from biosemi_recorder import create_eeg_recorder
 ### Settings
 # Display: the Tobii gaze coordinates map to the WHOLE screen,
 # so the window must be fullscreen at the real display resolution.
-SCREEN_PX = (1920, 1080)          # set to your display resolution
+SCREEN_PX = (1680, 1050)          # set to your display resolution
 SCREEN_WIDTH_CM = 47.5
 SCREEN_HEIGHT_CM = 30.0
 VIEWING_DISTANCE_CM = 60.0
@@ -34,6 +34,11 @@ VIDEO_PATH = Path("video/Riddle_2.mp4")
 VIDEO_ASPECT = 16 / 9             # width / height of the video file
 SRT_FILE_PATH = Path("subtitles/Riddle_2.en.srt")
 CHUNK_CSV_PATH = Path("chunk/Riddle_2.csv")
+
+# Pause / confusion rating
+PAUSE_TIME = 5                    # seconds allowed for the rating; -1 = no timeout
+PAUSE_TIME_SHIFT = 0              # seconds; positive pauses earlier
+RATING_KEYS = [str(i) for i in range(1, 10)]   # 1 = no confusion, 9 = extreme confusion
 
 # Subtitles
 SUB_FONT_HEIGHT_CM = 1.1
@@ -83,11 +88,11 @@ class SrtHandler:
         return ""
 
 
-class PauseHandler:  # Decide whether the video should pause or not according to the chunk csv.
-    def __init__(self, csv_file_path: Path, pauseTime=3.0):
+class PauseHandler:  # Decide when to pause according to the chunk csv (4th column = time).
+    def __init__(self, csv_file_path: Path, pauseTime=PAUSE_TIME):
         self.chunkData = pd.read_csv(csv_file_path)
         self.chunkData = self.chunkData.iloc[:, 3].tolist()  # iloc:[row,column]
-        self.chunkData = [self.convert_seconds(i) for i in self.chunkData]
+        self.chunkData = [self.convert_seconds(i) - PAUSE_TIME_SHIFT for i in self.chunkData]
         print(self.chunkData)
         self.pauseTimer = core.Clock()
         self.shouldPause = False
@@ -101,17 +106,28 @@ class PauseHandler:  # Decide whether the video should pause or not according to
                 if not self.shouldPause:
                     self.shouldPause = True
                     self.pauseTimer.reset()
-                elif self.pauseTimer.getTime() > self.pauseTime:
-                    self.shouldPause = False
-                    self.index += 1
         return self.shouldPause
 
+    def completePause(self):
+        self.shouldPause = False
+        self.index += 1
+
+    def getRemainingTimeText(self):
+        if self.pauseTime < 0:
+            return ""
+        return f"({int(max(0, self.pauseTime - self.pauseTimer.getTime()) + 0.999)} s left)"
+
+    def isTimedOut(self):
+        if self.pauseTime < 0:
+            return False
+        return self.pauseTimer.getTime() >= self.pauseTime
+
     def convert_seconds(self, time_str):
-        minutes, seconds = map(int, time_str.split(":"))
-        return minutes * 60 + seconds
+        minutes, seconds = str(time_str).split(":")
+        return int(minutes) * 60 + float(seconds)
 
 
-# LSL Stream to record the key pressing event and the video status event
+# LSL Stream to record the rating events and the video status events
 class MarkerSender:
     def __init__(self, name="VideoExpMarker"):
         info = StreamInfo(name=name, type='Markers', channel_count=1, nominal_srate=0,
@@ -138,7 +154,7 @@ def set_subtitle(win, subtitle_text, text: str):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Video stimulus with optional Tobii gaze and EEG recording via LSL.")
+    parser = argparse.ArgumentParser(description="Video stimulus with confusion rating and optional Tobii gaze / EEG recording via LSL.")
     parser.add_argument("--participant", default=None, help="Participant name. If omitted, the script asks.")
     parser.add_argument("--eyetracker", choices=["off", "tobii"], default="off", help="Tobii gaze recording. Default: off.")
     parser.add_argument("--eeg", choices=["off", "lsl"], default="off", help="EEG recording through LSL. Default: off.")
@@ -211,27 +227,27 @@ def main():
         color="white",
     )
 
-    # Confusion question shown while the video is paused
-    question_bg = visual.Rect(
+    # Rating box shown while the video is paused
+    pause_box = visual.Rect(
         win=win,
         units="cm",
-        width=EYE_VALID_WIDTH_CM * 0.8,
-        height=5.0,
+        width=EYE_VALID_WIDTH_CM * 0.9,
+        height=9.0,
         pos=(VALID_CENTER_X, VALID_CENTER_Y),
         fillColor="black",
-        lineColor=None,
-        opacity=0.85,
+        lineColor="white",
+        lineWidth=3,
+        opacity=1.0,
         autoLog=False,
     )
 
-    question_text = visual.TextStim(
+    pause_text = visual.TextStim(
         win=win,
         units="cm",
-        text="你覺得剛剛這段內容困惑嗎？\n\nF：困惑　　J：不困惑",
-        font="Microsoft JhengHei",
+        text="",
         pos=(VALID_CENTER_X, VALID_CENTER_Y),
-        height=1.0,
-        wrapWidth=EYE_VALID_WIDTH_CM * 0.7,
+        height=0.9,
+        wrapWidth=EYE_VALID_WIDTH_CM * 0.8,
         color="white",
     )
 
@@ -258,10 +274,8 @@ def main():
             gaze_recorder.set_state(video_time=f"{currentTime:.3f}")
 
             ### Handling Pause Behaviors
-            shouldPause = pauseHandler.getPauseState(currentTime)
-            if shouldPause:
-                question_bg.draw()
-                question_text.draw()
+            pause_state = pauseHandler.getPauseState(currentTime)
+            if pause_state:
                 if is_playing:  # First enter this condition
                     is_playing = False
                     video.pause()
@@ -270,14 +284,33 @@ def main():
                     kb.clock.reset()
                     kb.clearEvents()
 
-                video_keys = kb.getKeys(keyList=['f', 'j'], waitRelease=False, clear=True)
+                video_keys = kb.getKeys(keyList=RATING_KEYS, waitRelease=False, clear=True)
+                pause_finished = False
                 if video_keys:  # Only consider the first key
-                    if video_keys[0].name == 'f':
-                        print("keyboard] f pressed")
-                        sender.send_trigger("Confused")
-                    else:
-                        print("keyboard] j pressed")
-                        sender.send_trigger("NotConfused")
+                    rating = video_keys[0].name
+                    print(f"keyboard] rating {rating} pressed")
+                    sender.send_trigger(f"Rating_{rating}")
+                    pause_finished = True
+                elif pauseHandler.isTimedOut():
+                    print("keyboard] no response")
+                    sender.send_trigger("NoResponse")
+                    pause_finished = True
+
+                if pause_finished:
+                    pauseHandler.completePause()
+                    is_playing = True
+                    video.play()
+                    sender.send_trigger("VideoResume")
+                    gaze_recorder.set_state(phase="video_playing", chunk_index="", chunk_text="")
+                else:
+                    pause_text.text = (
+                        "<Video Paused>\n\n"
+                        "Rate Your Level of Confusion\n"
+                        "1 = No confusion <-> 9 = Extreme Confusion\n\n"
+                        f"{pauseHandler.getRemainingTimeText()}"
+                    )
+                    pause_box.draw()
+                    pause_text.draw()
 
             elif not is_playing:
                 is_playing = True
@@ -285,9 +318,9 @@ def main():
                 sender.send_trigger("VideoResume")
                 gaze_recorder.set_state(phase="video_playing", chunk_index="", chunk_text="")
 
-            ### Handling Subtitles Display
+            ### Handling Subtitles Display (hidden while the rating box is shown)
             set_subtitle(win, subtitle_text, videoSub.getCurrentSub(currentTime))
-            if subtitle_text.text and not shouldPause:
+            if subtitle_text.text and not pause_state:
                 subtitle_bg.draw()
                 subtitle_text.draw()
 
