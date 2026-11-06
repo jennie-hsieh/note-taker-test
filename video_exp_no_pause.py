@@ -418,6 +418,10 @@ def main():
     print("Current working directory:", Path.cwd())
     print("Results directory:", RESULTS_DIR.resolve())
 
+    # Create the marker stream BEFORE the wait below, so LabRecorder can already see it (click Update)
+    sender = MarkerSender()
+    print("Marker stream 'VideoExpMarker' is ready -> in LabRecorder click Update, select it, then Start.")
+
     if not args.no_wait:
         input("Set up LabRecorder (and check the eye tracker), then press ENTER to continue...")
     gaze_path = RESULTS_DIR / f"{safe_name}_gaze_{session_id}.csv"
@@ -425,7 +429,6 @@ def main():
 
     gaze_recorder = create_gaze_recorder(args.eyetracker, session_id=session_id, participant_name=participant_name)
     eeg_recorder = create_eeg_recorder(args.eeg, stream_name=args.eeg_stream_name, stream_type=args.eeg_stream_type)
-    sender = MarkerSender()
 
     mirror = None
     if args.mirror_screen is not None:

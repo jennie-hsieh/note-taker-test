@@ -1,0 +1,53 @@
+[11:41:30.340] Log file: C:\Users\a\Documents\Note taker\results\test01_log_20261106114130.txt
+[11:41:30.341] Command line: video_exp_no_pause.py --id 2 --participant test01
+[11:41:30.341] Args: {'participant': 'test01', 'eyetracker': 'off', 'eeg': 'off', 'eeg_stream_name': None, 'eeg_stream_type': 'EEG', 'id': '2', 'riddle': 2, 'sub_lang': 'zh-TW', 'video': None, 'srt': None, 'chunk': None, 'participant_screen': 1, 'mirror_screen': None, 'no_baseline': False, 'no_wait': False}
+[11:41:30.341] Current working directory: C:\Users\a\Documents\Note taker
+[11:41:30.341] Results directory: C:\Users\a\Documents\Note taker\results
+[11:41:30.347] Marker stream 'VideoExpMarker' is ready -> in LabRecorder click Update, select it, then Start.
+[11:41:42.791] 12.2750 	WARNING 	Monitor specification not found. Creating a temporary one...
+[11:41:42.791] 12.2772 	WARNING 	Requested an unavailable screen number - using first available.
+[11:41:42.791] 12.3005 	WARNING 	User requested fullscreen with size [1680 1050], but screen is actually [2560, 1440]. Using actual size
+[11:41:44.190] [(0.0, 27.0), (27.0, 40.0), (40.0, 62.0), (62.0, 81.0), (81.0, 100.0), (100.0, 118.0), (118.0, 132.0), (132.0, 146.0), (146.0, 163.0), (163.0, 178.0), (178.0, 198.0)]
+[11:41:44.192] [MARKER] Instruction_2
+[11:41:45.365] [MARKER] openeye_onset
+[11:42:15.370] [MARKER] openeye_offset
+[11:42:15.379] [MARKER] restcue_onset
+[11:42:20.387] [MARKER] restcue_offset
+[11:42:20.395] [MARKER] closeeye_onset
+[11:42:50.396] [MARKER] closeeye_offset
+[11:42:50.405] [MARKER] video_onset|video=V002
+[11:42:50.405] [MARKER] chunk_onset|chunk=1
+[11:43:18.953] [MARKER] chunk_offset|chunk=1
+[11:43:18.953] [MARKER] chunk_onset|chunk=2
+[11:43:32.190] [MARKER] chunk_offset|chunk=2
+[11:43:32.190] [MARKER] chunk_onset|chunk=3
+[11:43:53.932] [MARKER] chunk_offset|chunk=3
+[11:43:53.932] [MARKER] chunk_onset|chunk=4
+[11:44:12.940] [MARKER] chunk_offset|chunk=4
+[11:44:12.940] [MARKER] chunk_onset|chunk=5
+[11:44:32.194] [MARKER] chunk_offset|chunk=5
+[11:44:32.194] [MARKER] chunk_onset|chunk=6
+[11:44:49.947] [MARKER] chunk_offset|chunk=6
+[11:44:49.948] [MARKER] chunk_onset|chunk=7
+[11:45:03.934] [MARKER] chunk_offset|chunk=7
+[11:45:03.935] [MARKER] chunk_onset|chunk=8
+[11:45:17.934] [MARKER] chunk_offset|chunk=8
+[11:45:17.934] [MARKER] chunk_onset|chunk=9
+[11:45:34.935] [MARKER] chunk_offset|chunk=9
+[11:45:34.935] [MARKER] chunk_onset|chunk=10
+[11:45:50.186] [MARKER] chunk_offset|chunk=10
+[11:45:50.186] [MARKER] chunk_onset|chunk=11
+[11:46:10.196] [MARKER] chunk_offset|chunk=11
+[11:46:40.619] [MARKER] escape_pressed|phase=video
+[11:46:40.619] Saving gaze to: C:\Users\a\Documents\Note taker\results\test01_gaze_20261106114130.csv
+[11:46:40.619] After save, gaze exists: False
+[11:46:40.621] Saving EEG to: C:\Users\a\Documents\Note taker\results\test01_eeg_20261106114130.csv
+[11:46:40.621] After save, EEG exists: False
+[11:46:40.702] Session finished. Log saved to: C:\Users\a\Documents\Note taker\results\test01_log_20261106114130.txt
+Windows fatal exception: access violation
+
+Thread 0x00003ba0 (most recent call first):
+  <no Python frame>
+
+Thread 0x000018f8 (most recent call first):
+  <no Python frame>
